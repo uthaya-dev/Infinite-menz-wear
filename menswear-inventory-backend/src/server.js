@@ -10,10 +10,12 @@ import saleRoutes from "./routes/saleRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import alertRoutes from "./routes/alertRoutes.js";
+import dns from "node:dns/promises";
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 dotenv.config();
 connectDB();
-
+console.log("URI:", process.env.MONGO_URI);
 const app = express();
 
 // Middleware

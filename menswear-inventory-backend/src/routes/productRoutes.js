@@ -7,6 +7,7 @@ import {
   deleteVariant,
   editVariant,
   searchVariants,
+  updateProduct,
 } from "../controllers/productController.js";
 
 const router = express.Router();
@@ -14,6 +15,7 @@ const router = express.Router();
 router.post("/", createProduct);
 router.get("/", getProducts);
 router.delete("/:id", deleteProduct);
+router.put("/:id", updateProduct);
 router.post("/:id/add-variant", addVariant);
 router.put("/:productId/variant/:variantId", editVariant);
 router.delete("/:productId/variant/:variantId", deleteVariant);

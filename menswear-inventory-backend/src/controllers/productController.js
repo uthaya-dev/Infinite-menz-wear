@@ -3,61 +3,55 @@ import Variant from "../models/Variant.js";
 import Master from "../models/Master.js";
 import { generateSKU } from "../utils/generateSKU.js";
 
+import mongoose from "mongoose";
+
 export const createProduct = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { name, categoryId, brandId, description, variants } = req.body;
 
-    // ❌ VALIDATION
     if (!name || !categoryId || !variants || variants.length === 0) {
-      return res.status(400).json({ message: "Missing required fields" });
+      throw new Error("Missing required fields");
     }
 
-    // ✅ Get category name (for SKU)
     const category = await Master.findById(categoryId);
-    if (!category) {
-      return res.status(400).json({ message: "Invalid category" });
-    }
+    if (!category) throw new Error("Invalid category");
 
-    // ✅ Create product
-    const product = await Product.create({
-      name,
-      categoryId,
-      brandId,
-      description,
-    });
+    // ✅ Create product (WITH session)
+    const product = await Product.create(
+      [
+        {
+          name,
+          categoryId,
+          brandId,
+          description,
+        },
+      ],
+      { session },
+    );
 
     const variantData = [];
-
-    const seen = new Set(); // prevent duplicates inside request
+    const seen = new Set();
 
     for (let v of variants) {
       const { size, color, stockQty, purchasePrice, sellingPrice } = v;
 
-      // ❌ VALIDATION
-      if (!size || !color) {
-        return res.status(400).json({ message: "Size and color required" });
-      }
+      if (!size || !color) throw new Error("Size and color required");
 
-      if (stockQty < 0) {
-        return res.status(400).json({ message: "Invalid stock" });
-      }
-
-      // ❌ Duplicate variant check (same size + color)
       const key = `${size}-${color}`;
-      if (seen.has(key)) {
-        return res.status(400).json({ message: `Duplicate variant: ${key}` });
-      }
+      if (seen.has(key)) throw new Error(`Duplicate variant: ${key}`);
       seen.add(key);
 
-      // 🔥 Generate SKU
-      const sku = generateSKU({
+      const sku = await generateSKU({
         categoryName: category.name,
         color,
         size,
       });
 
       variantData.push({
-        productId: product._id,
+        productId: product[0]._id,
         size,
         color,
         sku,
@@ -67,26 +61,22 @@ export const createProduct = async (req, res) => {
       });
     }
 
-    // ❌ Check SKU duplicates in DB
-    const existingSKUs = await Variant.find({
-      sku: { $in: variantData.map((v) => v.sku) },
-    });
+    await Variant.insertMany(variantData, { session });
 
-    if (existingSKUs.length > 0) {
-      return res.status(400).json({
-        message: "SKU already exists",
-      });
-    }
-
-    // ✅ Insert variants
-    await Variant.insertMany(variantData);
+    // ✅ Commit
+    await session.commitTransaction();
+    session.endSession();
 
     res.status(201).json({
       message: "Product created successfully",
-      productId: product._id,
+      productId: product[0]._id,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    // ❌ Rollback everything
+    await session.abortTransaction();
+    session.endSession();
+
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -124,6 +114,88 @@ export const deleteProduct = async (req, res) => {
   }
 };
 
+export const updateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, categoryId, brandId, description, variants } = req.body;
+
+    if (!name || !categoryId || !variants || variants.length === 0) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const product = await Product.findById(id).populate("categoryId");
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // 🔥 ADD THIS
+    const category = await Master.findById(categoryId);
+
+    if (!category) {
+      return res.status(400).json({ message: "Invalid category" });
+    }
+
+    // ✅ Update product
+    product.name = name;
+    product.categoryId = categoryId;
+    product.brandId = brandId;
+    product.description = description;
+    await product.save();
+
+    // ❌ Delete old variants
+    await Variant.deleteMany({ productId: id });
+
+    const seen = new Set();
+    const variantData = [];
+    for (let v of variants) {
+      const { size, color } = v;
+
+      console.log("DEBUG:", {
+        categoryName: category?.name,
+        size,
+        color,
+      });
+
+      const sku = await generateSKU({
+        categoryName: category?.name,
+        color,
+        size,
+      });
+    }
+    for (let v of variants) {
+      const { size, color } = v;
+
+      if (!size || !color) {
+        return res.status(400).json({ message: "Size & color required" });
+      }
+
+      const key = `${size}-${color}`;
+      if (seen.has(key)) {
+        return res.status(400).json({ message: `Duplicate: ${key}` });
+      }
+      seen.add(key);
+
+      const sku = await generateSKU({
+        categoryName: category.name,
+        color,
+        size,
+      });
+
+      variantData.push({
+        productId: id,
+        size,
+        color,
+        sku,
+      });
+    }
+
+    await Variant.insertMany(variantData);
+    res.json({ message: "Product updated successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // NEW: ADD VARIANT
 export const addVariant = async (req, res) => {
   try {
@@ -156,8 +228,8 @@ export const addVariant = async (req, res) => {
         return res.status(400).json({ message: `Duplicate variant: ${key}` });
       seen.add(key);
 
-      const sku = generateSKU({
-        categoryName: product.categoryId.name,
+      const sku = await generateSKU({
+        categoryName: category.name,
         color,
         size,
       });

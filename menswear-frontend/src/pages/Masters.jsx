@@ -15,6 +15,15 @@ const Masters = () => {
   const [masters, setMasters] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const [editId, setEditId] = useState(null);
+  const [editName, setEditName] = useState("");
+
+  const [primaryColor, setPrimaryColor] = useState("");
+  const [secondaryColor, setSecondaryColor] = useState("");
+
+  const [editPrimary, setEditPrimary] = useState("");
+  const [editSecondary, setEditSecondary] = useState("");
+
   // Fetch masters
   const fetchMasters = async () => {
     try {
@@ -22,7 +31,6 @@ const Masters = () => {
       const res = await API.get(`/masters/${type}`);
       setMasters(res.data || []);
     } catch (err) {
-      console.error(err);
       alert("Failed to load data");
     } finally {
       setLoading(false);
@@ -31,122 +39,268 @@ const Masters = () => {
 
   useEffect(() => {
     fetchMasters();
+
+    // reset fields on type change
+    setName("");
+    setPrimaryColor("");
+    setSecondaryColor("");
   }, [type]);
 
-  // Add master
+  // Add
   const handleAdd = async () => {
-    if (!name.trim()) return alert("Enter name");
-
     try {
-      await API.post("/masters", {
-        name: name.trim(),
-        type,
-      });
+      if (type === "color") {
+        if (!primaryColor.trim()) return alert("Primary color required");
 
-      setName("");
+        const exists = masters.some(
+          (m) =>
+            m.primaryColor === primaryColor.trim() &&
+            (m.secondaryColor || "") === (secondaryColor.trim() || ""),
+        );
+
+        if (exists) return alert("Color already exists");
+
+        await API.post("/masters", {
+          type,
+          primaryColor,
+          secondaryColor,
+        });
+
+        setPrimaryColor("");
+        setSecondaryColor("");
+      } else {
+        if (!name.trim()) return alert("Enter name");
+
+        const exists = masters.some(
+          (m) => m.name.toLowerCase() === name.trim().toLowerCase(),
+        );
+
+        if (exists) return alert(`${type} already exists`);
+
+        await API.post("/masters", {
+          name: name.trim(),
+          type,
+        });
+
+        setName("");
+      }
+
       fetchMasters();
     } catch (err) {
-      alert(err.response?.data?.message || "Error adding item");
+      alert(err.response?.data?.message || "Error");
     }
   };
 
-  // Delete master
+  // Update
+  const handleUpdate = async (id) => {
+    try {
+      if (type === "color") {
+        if (!editPrimary.trim()) return alert("Primary color required");
+
+        await API.put(`/masters/${id}`, {
+          type,
+          primaryColor: editPrimary,
+          secondaryColor: editSecondary,
+        });
+      } else {
+        if (!editName.trim()) return alert("Enter name");
+
+        await API.put(`/masters/${id}`, {
+          name: editName,
+        });
+      }
+
+      setEditId(null);
+      fetchMasters();
+    } catch (err) {
+      alert("Update failed");
+    }
+  };
+
+  // Delete
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure?")) return;
 
     try {
       await API.delete(`/masters/${id}`);
       fetchMasters();
-    } catch (err) {
+    } catch {
       alert("Delete failed");
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    const confirm1 = window.confirm(
+      `Are you sure you want to delete ALL ${type}?`,
+    );
+    if (!confirm1) return;
+
+    // 🔥 Second safety layer
+    const confirmText = prompt(`Type DELETE to confirm removing all ${type}`);
+
+    if (confirmText !== "DELETE") {
+      alert("Action cancelled");
+      return;
+    }
+
+    try {
+      await API.delete(`/masters/type/${type}`);
+      fetchMasters();
+    } catch (err) {
+      alert("Failed to delete");
     }
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800">Master Data</h1>
+      <h1 className="text-3xl font-bold">Master Data</h1>
 
       {/* FORM */}
       <div className="bg-white p-4 rounded shadow space-y-4 max-w-xl">
         <h2 className="text-lg font-semibold">Add New Master</h2>
 
-        {/* Type */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Select Type</label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="w-full border rounded px-3 py-2 focus:ring-2 focus:ring-blue-400"
-          >
-            {MASTER_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* TYPE */}
+        <select
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+          className="w-full border px-3 py-2 rounded"
+        >
+          {MASTER_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
 
-        {/* Name */}
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            {MASTER_TYPES.find((t) => t.value === type)?.label} Name
-          </label>
+        {/* INPUTS */}
+        {type === "color" ? (
+          <>
+            <input
+              placeholder="Primary Color *"
+              value={primaryColor}
+              onChange={(e) => setPrimaryColor(e.target.value)}
+              className="w-full border px-3 py-2 rounded"
+            />
+            <input
+              placeholder="Secondary Color (optional)"
+              value={secondaryColor}
+              onChange={(e) => setSecondaryColor(e.target.value)}
+              className="w-full border px-3 py-2 rounded"
+            />
+          </>
+        ) : (
           <input
-            type="text"
-            placeholder={`Enter ${type} name`}
+            placeholder={`Enter ${type}`}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full border rounded px-3 py-2 focus:ring-2 focus:ring-blue-400"
+            className="w-full border px-3 py-2 rounded"
           />
-        </div>
+        )}
 
-        {/* Button */}
         <button
           onClick={handleAdd}
-          disabled={loading}
-          className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-4 py-2 rounded shadow"
+          className="bg-blue-500 text-white px-4 py-2 rounded"
         >
-          {loading ? "Adding..." : "Add"}
+          Add
         </button>
       </div>
 
-      {/* TABLE */}
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse bg-white shadow rounded overflow-hidden">
-          <thead className="bg-gray-200">
-            <tr>
-              <th className="text-left px-4 py-2">Name</th>
-              <th className="text-left px-4 py-2">Type</th>
-              <th className="text-left px-4 py-2">Actions</th>
-            </tr>
-          </thead>
+      <button
+        onClick={handleDeleteAll}
+        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"
+      >
+        Delete All {type}
+      </button>
 
-          <tbody>
-            {masters.length === 0 ? (
-              <tr>
-                <td colSpan="3" className="text-center py-4 text-gray-500">
-                  No data found
-                </td>
-              </tr>
-            ) : (
-              masters.map((m) => (
-                <tr key={m._id} className="hover:bg-gray-50 border-b">
-                  <td className="px-4 py-2 capitalize">{m.name}</td>
-                  <td className="px-4 py-2 capitalize">{type}</td>
-                  <td className="px-4 py-2">
+      {/* TABLE */}
+      <table className="w-full bg-white shadow rounded">
+        <thead>
+          <tr className="bg-gray-200">
+            <th className="p-2 text-left">Name</th>
+            <th className="p-2">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {masters.map((m) => (
+            <tr key={m._id} className="border-b">
+              <td className="p-2">
+                {editId === m._id ? (
+                  type === "color" ? (
+                    <>
+                      <input
+                        value={editPrimary}
+                        onChange={(e) => setEditPrimary(e.target.value)}
+                        className="border px-2 mr-2"
+                      />
+                      <input
+                        value={editSecondary}
+                        onChange={(e) => setEditSecondary(e.target.value)}
+                        className="border px-2"
+                      />
+                    </>
+                  ) : (
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="border px-2"
+                    />
+                  )
+                ) : type === "color" ? (
+                  `${m.primaryColor}${
+                    m.secondaryColor ? " / " + m.secondaryColor : ""
+                  }`
+                ) : (
+                  m.name
+                )}
+              </td>
+
+              <td className="p-2 space-x-2">
+                {editId === m._id ? (
+                  <>
+                    <button
+                      onClick={() => handleUpdate(m._id)}
+                      className="text-green-600"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditId(null)}
+                      className="text-gray-600"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => {
+                        setEditId(m._id);
+                        if (type === "color") {
+                          setEditPrimary(m.primaryColor || "");
+                          setEditSecondary(m.secondaryColor || "");
+                        } else {
+                          setEditName(m.name);
+                        }
+                      }}
+                      className="text-blue-600"
+                    >
+                      Edit
+                    </button>
+
                     <button
                       onClick={() => handleDelete(m._id)}
-                      className="text-red-600 hover:underline"
+                      className="text-red-600"
                     >
                       Delete
                     </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 };

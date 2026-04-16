@@ -4,6 +4,7 @@ import {
   getMasters,
   updateMaster,
   deleteMaster,
+  deleteAllMastersByType,
 } from "../controllers/masterController.js";
 
 const router = express.Router();
@@ -20,4 +21,5 @@ router.put("/:id", updateMaster);
 // Delete
 router.delete("/:id", deleteMaster);
 
+router.delete("/type/:type", deleteAllMastersByType);
 export default router;

@@ -1,0 +1,13 @@
+{
+  "name": "menswear-fullstack",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "frontend": "npm run dev --prefix menswear-frontend",
+    "backend": "npm run dev --prefix menswear-inventory-backend",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
